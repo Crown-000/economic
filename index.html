@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>經濟模擬遊戲（完整版）</title>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+
+<script>
+// 🔥 改成你的 Firebase config
+const firebaseConfig = {
+    apiKey: "AIzaSyBtWQhYT978hquv84_nEqRrOjqA817TVUY",
+    authDomain: "economic-project-d8d72.firebaseapp.com",
+    databaseURL: "https://economic-project-d8d72-default-rtdb.firebaseio.com",
+    projectId: "economic-project-d8d72"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+</script>
+
+<style>
+body { font-family: Arial; }
+button { margin: 5px; }
+
+#gameArea {
+    position: relative;
+    width: 600px;
+    height: 300px;
+    border: 2px solid black;
+    background: #e0f7fa;
+}
+</style>
+</head>
+
+<body>
+
+<h1>經濟模擬遊戲（互動版）</h1>
+
+<!-- 🎮 遊戲畫面 -->
+<div id="gameArea">
+
+<img id="player"
+src="https://cdn-icons-png.flaticon.com/512/1946/1946429.png"
+style="position:absolute;width:50px;left:50px;top:200px;">
+
+<div style="position:absolute;left:450px;top:180px;">🏢</div>
+<div style="position:absolute;left:250px;top:180px;">🏪</div>
+
+</div>
+
+<hr>
+
+<h2>玩家</h2>
+<p>ID: <span id="pid"></span></p>
+<p>金錢: <span id="money">1000</span></p>
+<p>薪資: <span id="salary">100</span></p>
+
+<h2>市場</h2>
+<p>食物價格: <span id="foodPrice">10</span></p>
+<p>房價: <span id="housePrice">500</span></p>
+<p>狀態: <span id="warStatus">和平</span></p>
+
+<hr>
+
+<button onclick="work()">工作</button>
+<button onclick="buyFood()">買食物</button>
+<button onclick="nextTurn()">下一回合</button>
+
+<hr>
+
+<h2>選舉</h2>
+<input id="candidateName" placeholder="候選人">
+<input id="policy" placeholder="政見（低稅/高薪/補助/房價控制）">
+<button onclick="registerCandidate()">參選</button>
+
+<ul id="candidateList"></ul>
+<button onclick="electLeader()">選舉結算</button>
+
+<hr>
+
+<h2>系統</h2>
+<button onclick="createAIPlayers()">建立AI</button>
+<button onclick="triggerWar()">觸發戰爭</button>
+<button onclick="downloadAllData()">下載CSV</button>
+
+<script>
+
+// ================= 玩家 =================
+let playerId = "player_" + Math.floor(Math.random() * 100000);
+document.getElementById("pid").innerText = playerId;
+
+let money = 1000;
+let salary = 100;
+
+let foodPrice = 10;
+let housePrice = 500;
+
+let housingControl = 1;
+
+// ================= 戰爭 =================
+let war = false;
+let warTurns = 0;
+let recovery = false;
+let recoverySpeed = 0.98;
+
+// ================= 選舉 =================
+let candidates = [];
+let aiPlayers = [];
+
+// ================= 畫面 =================
+function update() {
+    moneyEl.innerText = money;
+    salaryEl.innerText = salary;
+    foodEl.innerText = foodPrice.toFixed(2);
+    houseEl.innerText = housePrice.toFixed(2);
+
+    warStatus.innerText =
+        war ? "戰爭中" : (recovery ? "復甦中" : "和平");
+}
+
+// 快取DOM（效能比較好）
+let moneyEl = document.getElementById("money");
+let salaryEl = document.getElementById("salary");
+let foodEl = document.getElementById("foodPrice");
+let houseEl = document.getElementById("housePrice");
+let warStatus = document.getElementById("warStatus");
+
+// ================= 動畫 =================
+let playerX = 50;
+
+function moveTo(x) {
+    let player = document.getElementById("player");
+
+    let interval = setInterval(() => {
+        if (playerX < x) playerX += 2;
+        else if (playerX > x) playerX -= 2;
+
+        player.style.left = playerX + "px";
+
+        if (Math.abs(playerX - x) < 3) {
+            clearInterval(interval);
+        }
+    }, 10);
+}
+
+// ================= 玩家行為 =================
+function work() {
+    moveTo(450);
+
+    setTimeout(() => {
+        let warEffect = war ? 0.8 : 1;
+        let recoveryBoost = recovery ? 1.1 : 1;
+
+        money += salary * warEffect * recoveryBoost;
+
+        inflation(100);
+        update();
+    }, 1500);
+}
+
+function buyFood() {
+    moveTo(250);
+
+    setTimeout(() => {
+        if (money >= foodPrice) {
+            money -= foodPrice;
+            inflation(foodPrice);
+        }
+        update();
+    }, 1500);
+}
+
+// ================= 經濟 =================
+function inflation(spending) {
+    let warEffect = war ? 1.5 : 1;
+
+    foodPrice += spending * 0.01 * warEffect;
+    housePrice += spending * 0.02 * housingControl;
+
+    if (war) foodPrice *= 1.01;
+
+    if (recovery) {
+        foodPrice *= recoverySpeed;
+        housePrice *= recoverySpeed;
+    }
+}
+
+// ================= 回合 =================
+function nextTurn() {
+
+    if (war) warTurns++;
+
+    if (war && warTurns > 5) {
+        war = false;
+        recovery = true;
+        alert("🕊 戰爭結束");
+    }
+
+    if (recovery) {
+        foodPrice *= recoverySpeed;
+        housePrice *= recoverySpeed;
+
+        if (Math.abs(foodPrice - 10) < 0.5) {
+            recovery = false;
+        }
+    }
+
+    recordData();
+    update();
+}
+
+// ================= 選舉 =================
+function registerCandidate() {
+    let name = candidateName.value;
+    let policy = policyInput.value;
+
+    candidates.push({ name, policy, votes: 0 });
+    renderCandidates();
+}
+
+let candidateName = document.getElementById("candidateName");
+let policyInput = document.getElementById("policy");
+
+function renderCandidates() {
+    candidateList.innerHTML = "";
+
+    candidates.forEach((c, i) => {
+        let li = document.createElement("li");
+        li.innerHTML = `${c.name}｜${c.policy}｜${c.votes}
+        <button onclick="vote(${i})">投票</button>`;
+        candidateList.appendChild(li);
+    });
+}
+
+let candidateList = document.getElementById("candidateList");
+
+function vote(i) {
+    candidates[i].votes++;
+    renderCandidates();
+}
+
+// ================= AI =================
+function createAIPlayers() {
+    aiPlayers = [];
+
+    for (let i = 0; i < 20; i++) {
+        let r = Math.random();
+        let type = r < 0.33 ? "低稅" : (r < 0.66 ? "高薪" : "中立");
+        aiPlayers.push({ type });
+    }
+}
+
+function aiVote() {
+    aiPlayers.forEach(p => {
+        let best = 0;
+        let bestScore = -1;
+
+        candidates.forEach((c, i) => {
+            let score = Math.random();
+
+            if (p.type === "低稅" && c.policy.includes("低稅")) score += 2;
+            if (p.type === "高薪" && c.policy.includes("高薪")) score += 2;
+            if (c.policy.includes("補助")) score += 1.5;
+            if (c.policy.includes("房價控制")) score += 1;
+
+            if (score > bestScore) {
+                bestScore = score;
+                best = i;
+            }
+        });
+
+        candidates[best].votes++;
+    });
+
+    renderCandidates();
+}
+
+function electLeader() {
+    if (candidates.length === 0) return;
+
+    aiVote();
+
+    let winner = candidates.reduce((a, b) =>
+        a.votes > b.votes ? a : b
+    );
+
+    alert("當選：" + winner.name);
+
+    if (winner.policy.includes("高薪")) salary = 150;
+    housingControl = winner.policy.includes("房價控制") ? 0.7 : 1.1;
+
+    if (winner.policy.includes("補助")) {
+        money += 200;
+        alert("政府補助");
+    }
+}
+
+// ================= 戰爭 =================
+function triggerWar() {
+    war = true;
+    recovery = false;
+    warTurns = 0;
+
+    document.getElementById("gameArea").style.background = "#ffcccc";
+
+    alert("⚠ 戰爭爆發");
+}
+
+// ================= Firebase =================
+function recordData() {
+    db.ref("gameData").push({
+        playerId,
+        money,
+        foodPrice,
+        housePrice,
+        salary,
+        war,
+        recovery,
+        time: Date.now()
+    });
+}
+
+// ================= CSV =================
+function downloadAllData() {
+
+    db.ref("gameData").once("value", snapshot => {
+
+        let csv = "playerId,money,foodPrice,housePrice,salary,war,recovery,time\n";
+
+        snapshot.forEach(child => {
+            let d = child.val();
+            csv += `${d.playerId},${d.money},${d.foodPrice},${d.housePrice},${d.salary},${d.war},${d.recovery},${d.time}\n`;
+        });
+
+        let blob = new Blob([csv], { type: "text/csv" });
+        let url = URL.createObjectURL(blob);
+
+        let a = document.createElement("a");
+        a.href = url;
+        a.download = "class_data.csv";
+        a.click();
+    });
+}
+
+update();
+
+</script>
+
+</body>
+</html>
