@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>經濟模擬世界</title>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+
+<script>
+const firebaseConfig = {
+    apiKey: "AIzaSyBtWQhYT978hquv84_nEqRrOjqA817TVUY",
+    authDomain: "economic-project-d8d72.firebaseapp.com",
+    databaseURL: "https://economic-project-d8d72-default-rtdb.firebaseio.com",
+    projectId: "economic-project-d8d72"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+</script>
+
+<style>
+body {
+    font-family: Arial;
+    margin:0;
+}
+
+button {
+    margin:5px;
+    padding:8px 12px;
+}
+
+#gameArea {
+    width:600px;
+    height:300px;
+    border:2px solid #333;
+    background:#e0f7fa;
+    position:relative;
+    overflow:hidden;
+}
+
+.card {
+    padding:10px;
+    border:1px solid #ccc;
+    margin:5px;
+    border-radius:10px;
+    width:120px;
+    text-align:center;
+}
+</style>
+</head>
+
+<body>
+
+<!-- 🎮 開場畫面 -->
+<div id="startScreen" style="
+position:fixed;
+top:0;left:0;
+width:100%;height:100%;
+background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+display:flex;
+flex-direction:column;
+justify-content:center;
+align-items:center;
+color:white;
+z-index:9999;
+">
+
+<h1 style="font-size:42px;">🌍 經濟模擬世界</h1>
+<p>多人即時 × 政治 × 戰爭 × 經濟</p>
+
+<button onclick="startGame()" style="
+padding:12px 25px;
+font-size:18px;
+border:none;
+border-radius:10px;
+background:#00c6ff;
+color:white;
+cursor:pointer;
+">
+▶ 開始遊戲
+</button>
+
+</div>
+
+<!-- 🎮 遊戲 -->
+<div id="game" style="display:none;">
+
+<h2>角色設定</h2>
+<input id="nameInput" placeholder="名字">
+<select id="avatar">
+    <option value="👨">👨</option>
+    <option value="👩">👩</option>
+    <option value="🧑">🧑</option>
+    <option value="🦸">🦸</option>
+</select>
+<input type="color" id="color" value="#000000">
+<button onclick="createPlayer()">建立角色</button>
+
+<hr>
+
+<div id="gameArea">
+    <div id="player" style="position:absolute;left:50px;top:200px;font-size:40px;">👨</div>
+    <div style="position:absolute;left:450px;top:180px;">🏢</div>
+    <div style="position:absolute;left:250px;top:180px;">🏪</div>
+</div>
+
+<p>💰 金錢：<span id="money">1000</span></p>
+<p>⚔ 狀態：<span id="status">和平</span></p>
+
+<button onclick="work()">💼 工作</button>
+<button onclick="buy()">🛒 消費</button>
+<button onclick="triggerWar()">⚔ 戰爭</button>
+<button onclick="nextTurn()">⏭ 回合</button>
+
+<hr>
+
+<h2>👥 玩家在線</h2>
+<div id="playerWall" style="display:flex;flex-wrap:wrap;"></div>
+
+<h2>🏆 排行榜</h2>
+<ol id="leaderboard"></ol>
+
+</div>
+
+<script>
+
+let playerId = "p_" + Math.floor(Math.random()*100000);
+
+let player = {
+    name:"",
+    avatar:"👨",
+    color:"#000",
+    money:1000
+};
+
+let war = false;
+let recovery = false;
+
+// ================= 開始 =================
+function startGame(){
+    document.getElementById("startScreen").style.display="none";
+    document.getElementById("game").style.display="block";
+}
+
+// ================= 建立玩家 =================
+function createPlayer(){
+
+    player.name = nameInput.value;
+    player.avatar = avatar.value;
+    player.color = color.value;
+
+    document.getElementById("player").innerText = player.avatar;
+    document.getElementById("player").style.color = player.color;
+
+    syncPlayer();
+    listenPlayers();
+}
+
+// ================= 同步 =================
+function syncPlayer(){
+    db.ref("players/"+playerId).set(player);
+}
+
+// ================= 監聽玩家 =================
+function listenPlayers(){
+
+db.ref("players").on("value", snap=>{
+
+    let wall = document.getElementById("playerWall");
+    wall.innerHTML="";
+
+    let list=[];
+
+    snap.forEach(s=>{
+        let p=s.val();
+        list.push(p);
+
+        let div=document.createElement("div");
+        div.className="card";
+
+        div.innerHTML=`
+        <div style="font-size:30px;color:${p.color}">
+            ${p.avatar}
+        </div>
+        ${p.name}<br>
+        💰 ${p.money}
+        `;
+
+        wall.appendChild(div);
+    });
+
+    updateLeaderboard(list);
+
+});
+
+}
+
+// ================= 排行榜 =================
+function updateLeaderboard(list){
+
+list.sort((a,b)=>(b.money||0)-(a.money||0));
+
+let board=document.getElementById("leaderboard");
+board.innerHTML="";
+
+list.forEach((p,i)=>{
+
+let li=document.createElement("li");
+li.innerText=`${p.avatar} ${p.name} - ${p.money}`;
+board.appendChild(li);
+
+});
+
+}
+
+// ================= 經濟 =================
+function work(){
+    player.money += 100;
+    if(war) player.money*=0.9;
+
+    syncPlayer();
+    updateUI();
+}
+
+function buy(){
+    player.money -= 50;
+    syncPlayer();
+    updateUI();
+}
+
+// ================= 戰爭 =================
+function triggerWar(){
+    war=true;
+    recovery=false;
+    status.innerText="戰爭";
+    document.getElementById("gameArea").style.background="#ffcccc";
+}
+
+// ================= 回合 =================
+function nextTurn(){
+
+if(war && Math.random()<0.3){
+    war=false;
+    recovery=true;
+    status.innerText="復甦";
+}
+
+if(recovery){
+    player.money*=1.05;
+}
+
+syncPlayer();
+
+}
+
+// ================= UI =================
+function updateUI(){
+    money.innerText=player.money;
+}
+
+</script>
+
+</body>
+</html>
