@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>經濟政策模擬分析系統</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body{
+    font-family:"Segoe UI";
+    background:linear-gradient(135deg,#1e1e2f,#2c2c54);
+    color:white;
+    padding:20px;
+}
+
+h1,h3{
+    text-align:center;
+}
+
+.card{
+    background:rgba(255,255,255,0.08);
+    padding:20px;
+    border-radius:15px;
+    margin:20px 0;
+    box-shadow:0 0 15px rgba(0,0,0,0.3);
+}
+
+button{
+    padding:10px 16px;
+    margin:5px;
+    border:none;
+    border-radius:10px;
+    cursor:pointer;
+    background:linear-gradient(135deg,#6c5ce7,#00cec9);
+    color:white;
+    transition:0.2s;
+}
+
+button:hover{
+    transform:scale(1.05);
+}
+
+.policy{
+    position:relative;
+    display:inline-block;
+}
+
+.tooltip{
+    visibility:hidden;
+    width:220px;
+    background:rgba(0,0,0,0.9);
+    padding:8px;
+    border-radius:8px;
+    position:absolute;
+    bottom:125%;
+    left:50%;
+    transform:translateX(-50%);
+    opacity:0;
+    transition:0.3s;
+    font-size:12px;
+}
+
+.policy:hover .tooltip{
+    visibility:visible;
+    opacity:1;
+}
+
+input[type=range]{
+    width:100%;
+}
+
+table{
+    width:100%;
+    border-collapse:collapse;
+}
+
+td,th{
+    border:1px solid white;
+    padding:8px;
+    text-align:center;
+}
+
+canvas{
+    background:white;
+    border-radius:10px;
+    padding:10px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🏛️ 經濟政策關聯分析系統</h1>
+
+<div class="card">
+<h3>📊 當前狀態</h3>
+
+<p>通膨：<span id="inflation">2.00</span>%</p>
+<p>支持率：<span id="support">100</span>%</p>
+<p>目前政策：<span id="currentPolicy">無</span></p>
+<p>相關係數 r：<span id="correlation">0</span></p>
+</div>
+
+<div class="card">
+<h3>👥 人民行為</h3>
+
+<p>勞動率：<span id="workVal">50</span>%</p>
+<input type="range" min="0" max="100" value="50"
+oninput="updateWork(this.value)">
+
+<p>消費率：<span id="consumeVal">50</span>%</p>
+<input type="range" min="0" max="100" value="50"
+oninput="updateConsume(this.value)">
+</div>
+
+<div class="card">
+<h3>🏛️ 政策選擇</h3>
+
+<div class="policy">
+<button onclick="selectPolicy('stimulus')">刺激經濟</button>
+<span class="tooltip">政府支出增加 → 通膨上升</span>
+</div>
+
+<div class="policy">
+<button onclick="selectPolicy('taxUp')">提高稅收</button>
+<span class="tooltip">抑制需求 → 通膨下降</span>
+</div>
+
+<div class="policy">
+<button onclick="selectPolicy('rateDown')">降利率</button>
+<span class="tooltip">刺激消費與投資 → 通膨上升</span>
+</div>
+
+<div class="policy">
+<button onclick="selectPolicy('rateUp')">升利率</button>
+<span class="tooltip">抑制市場需求 → 通膨下降</span>
+</div>
+
+<div class="policy">
+<button onclick="selectPolicy('wageUp')">提高薪資</button>
+<span class="tooltip">企業成本提高 → 通膨上升</span>
+</div>
+
+<div class="policy">
+<button onclick="selectPolicy('housingControl')">打房政策</button>
+<span class="tooltip">抑制資產價格</span>
+</div>
+
+<div class="policy">
+<button onclick="selectPolicy('subsidy')">補助企業</button>
+<span class="tooltip">提高供給 → 穩定物價</span>
+</div>
+
+<div class="policy">
+<button onclick="selectPolicy('corpTax')">課企業稅</button>
+<span class="tooltip">企業成本增加 → 通膨上升</span>
+</div>
+
+</div>
+
+<div class="card">
+<h3>🎮 控制</h3>
+
+<button onclick="nextTurn()">➡️ 下一回合</button>
+
+<button onclick="resetGame()">🔄 重置</button>
+</div>
+
+<div class="card">
+<h3>📋 數據紀錄</h3>
+
+<table id="dataTable">
+<tr>
+<th>回合</th>
+<th>政策</th>
+<th>通膨</th>
+<th>支持率</th>
+<th>勞動率</th>
+<th>消費率</th>
+</tr>
+</table>
+</div>
+
+<div class="card">
+<h3>📈 通膨 vs 支持率（關聯分析）</h3>
+<canvas id="chart"></canvas>
+<button onclick="exportCSV()">📁 匯出CSV</button>
+<button onclick="downloadChart()">📸 下載圖表</button>
+</div>
+
+<script>
+
+/* ===== 基礎變數 ===== */
+
+let round = 0;
+
+let workRate = 0.5;
+let consumeRate = 0.5;
+
+let selectedPolicy = "無";
+
+let scatterData = [];
+
+let chart;
+
+/* ===== 政策中文 ===== */
+
+function getPolicyName(p){
+
+    return{
+        stimulus:"刺激經濟",
+        taxUp:"提高稅收",
+        rateDown:"降利率",
+        rateUp:"升利率",
+        wageUp:"提高薪資",
+        housingControl:"打房政策",
+        subsidy:"補助企業",
+        corpTax:"課企業稅"
+    }[p] || "無";
+}
+
+/* ===== 滑桿 ===== */
+
+function updateWork(val){
+    workRate = val / 100;
+    document.getElementById("workVal").innerText = val;
+}
+
+function updateConsume(val){
+    consumeRate = val / 100;
+    document.getElementById("consumeVal").innerText = val;
+}
+
+/* ===== 政策 ===== */
+
+function selectPolicy(type){
+
+    selectedPolicy = type;
+
+    document.getElementById("currentPolicy").innerText =
+    getPolicyName(type);
+}
+
+/* ===== 政策效果 ===== */
+
+function getPolicyEffect(){
+
+    let p = {
+        govSpend:0,
+        tax:0,
+        interest:0,
+        wage:0,
+        housing:0,
+        industry:0
+    };
+
+    switch(selectedPolicy){
+
+        case "stimulus":
+            p.govSpend = 1;
+            break;
+
+        case "taxUp":
+            p.tax = 1;
+            break;
+
+        case "rateDown":
+            p.interest = -0.5;
+            break;
+
+        case "rateUp":
+            p.interest = 0.5;
+            break;
+
+        case "wageUp":
+            p.wage = 0.5;
+            break;
+
+        case "housingControl":
+            p.housing = -0.5;
+            break;
+
+        case "subsidy":
+            p.industry = 0.5;
+            break;
+
+        case "corpTax":
+            p.industry = -0.5;
+            break;
+    }
+
+    return p;
+}
+
+/* ===== 通膨 ===== */
+
+function calculateInflation(){
+
+    let p = getPolicyEffect();
+
+    return Math.max(0,
+
+        2
+        + 2 * consumeRate
+        - 1.5 * workRate
+
+        + 0.5 * p.govSpend
+        - 0.4 * p.tax
+        + 0.3 * p.wage
+        + 0.4 * p.housing
+        - 0.5 * p.industry
+        - 0.6 * p.interest
+    );
+}
+
+/* ===== 支持率 ===== */
+
+function calculateSupport(inflation){
+
+    let p = getPolicyEffect();
+
+    return Math.max(0, Math.min(100,
+
+        100
+        - inflation * 5
+        - p.tax * 2
+        + p.wage * 2
+        - p.interest * 1.5
+    ));
+}
+
+/* ===== 趨勢線 ===== */
+
+function getTrendLine(data){
+
+    if(data.length < 2) return [];
+
+    let n = data.length;
+
+    let sumX=0,sumY=0,sumXY=0,sumX2=0;
+
+    data.forEach(d=>{
+
+        sumX += d.x;
+        sumY += d.y;
+        sumXY += d.x * d.y;
+        sumX2 += d.x * d.x;
+    });
+
+    let a =
+    (n*sumXY - sumX*sumY) /
+    (n*sumX2 - sumX*sumX);
+
+    let b =
+    (sumY - a*sumX)/n;
+
+    let minX = Math.min(...data.map(d=>d.x));
+    let maxX = Math.max(...data.map(d=>d.x));
+
+    return[
+        {x:minX, y:a*minX+b},
+        {x:maxX, y:a*maxX+b}
+    ];
+}
+
+/* ===== 相關係數 ===== */
+
+function calculateCorrelation(data){
+
+    if(data.length < 2) return 0;
+
+    let n = data.length;
+
+    let sumX=0,sumY=0,sumXY=0,sumX2=0,sumY2=0;
+
+    data.forEach(d=>{
+
+        sumX += d.x;
+        sumY += d.y;
+        sumXY += d.x*d.y;
+        sumX2 += d.x*d.x;
+        sumY2 += d.y*d.y;
+    });
+
+    let numerator =
+    n*sumXY - sumX*sumY;
+
+    let denominator =
+    Math.sqrt(
+        (n*sumX2 - sumX*sumX)
+        *
+        (n*sumY2 - sumY*sumY)
+    );
+
+    return denominator === 0
+    ? 0
+    : numerator / denominator;
+}
+
+/* ===== 圖表 ===== */
+
+function initChart(){
+
+    const ctx =
+    document.getElementById('chart');
+
+    chart = new Chart(ctx, {
+
+        type:'scatter',
+
+        data:{
+
+            datasets:[
+
+                {
+                    label:'經濟關聯',
+
+                    data:scatterData,
+
+                    backgroundColor:function(context){
+
+                        let d = context.raw || {};
+
+                        let r =
+                        Math.floor(
+                            255*(d.consume || 0)
+                        );
+
+                        let b =
+                        Math.floor(
+                            255*(1-(d.consume || 0))
+                        );
+
+                        return `rgb(${r},100,${b})`;
+                    },
+
+                    pointRadius:function(context){
+
+                        let d = context.raw || {};
+
+                        return 5 + (d.work || 0)*10;
+                    }
+                },
+
+                {
+                    label:'趨勢線',
+
+                    type:'line',
+
+                    data:getTrendLine(scatterData),
+
+                    borderColor:'yellow',
+
+                    borderWidth:2,
+
+                    pointRadius:0,
+
+                    fill:false
+                }
+            ]
+        },
+
+        options:{
+
+            plugins:{
+
+                tooltip:{
+
+                    callbacks:{
+
+                        title:function(context){
+
+                            let d =
+                            context[0].raw || {};
+
+                            return "回合："+d.round;
+                        },
+
+                        label:function(context){
+
+                            let d =
+                            context.raw || {};
+
+                            return [
+
+                                "政策："+getPolicyName(d.policy),
+
+                                "通膨："+d.x.toFixed(2)+"%",
+
+                                "支持率："+d.y.toFixed(0)+"%",
+
+                                "勞動率："+(d.work*100).toFixed(0)+"%",
+
+                                "消費率："+(d.consume*100).toFixed(0)+"%"
+                            ];
+                        }
+                    }
+                }
+            },
+
+            scales:{
+
+                x:{
+                    title:{
+                        display:true,
+                        text:'通膨 (%)'
+                    }
+                },
+
+                y:{
+                    title:{
+                        display:true,
+                        text:'支持率 (%)'
+                    },
+                    min:0,
+                    max:100
+                }
+            }
+        }
+    });
+}
+
+/* ===== 下一回合 ===== */
+
+function nextTurn(){
+
+    if(selectedPolicy === "無"){
+
+        alert("請先選政策！");
+        return;
+    }
+
+    round++;
+
+    let inflation =
+    calculateInflation();
+
+    let support =
+    calculateSupport(inflation);
+
+    document.getElementById("inflation")
+    .innerText = inflation.toFixed(2);
+
+    document.getElementById("support")
+    .innerText = support.toFixed(0);
+
+    /* 表格 */
+
+    let table =
+    document.getElementById("dataTable");
+
+    let row =
+    table.insertRow();
+
+    row.insertCell(0).innerText = round;
+
+    row.insertCell(1).innerText =
+    getPolicyName(selectedPolicy);
+
+    row.insertCell(2).innerText =
+    inflation.toFixed(2);
+
+    row.insertCell(3).innerText =
+    support.toFixed(0);
+
+    row.insertCell(4).innerText =
+    (workRate*100).toFixed(0)+"%";
+
+    row.insertCell(5).innerText =
+    (consumeRate*100).toFixed(0)+"%";
+
+    /* scatter */
+
+    scatterData.push({
+
+        x:inflation,
+        y:support,
+
+        work:workRate,
+        consume:consumeRate,
+
+        policy:selectedPolicy,
+
+        round:round
+    });
+
+    /* 趨勢線更新 */
+
+    chart.data.datasets[1].data =
+    getTrendLine(scatterData);
+
+    chart.update();
+
+    /* 相關係數 */
+
+    let r =
+    calculateCorrelation(scatterData);
+
+    document.getElementById("correlation")
+    .innerText = r.toFixed(2);
+
+    /* reset */
+
+    selectedPolicy = "無";
+
+    document.getElementById("currentPolicy")
+    .innerText = "無";
+}
+
+/* ===== CSV 匯出 ===== */
+
+function exportCSV(){
+
+    let csvRows = [];
+
+    /* 標題列 */
+    csvRows.push([
+        "回合",
+        "政策",
+        "通膨",
+        "支持率",
+        "勞動率",
+        "消費率"
+    ]);
+
+    /* 資料列 */
+    scatterData.forEach(d => {
+
+        csvRows.push([
+            d.round,
+            getPolicyName(d.policy),
+            d.x.toFixed(2),
+            d.y.toFixed(0),
+            (d.work * 100).toFixed(0) + "%",
+            (d.consume * 100).toFixed(0) + "%"
+        ]);
+    });
+
+    /* 組合CSV */
+    let csvContent =
+    csvRows.map(e => e.join(",")).join("\n");
+
+    /* ⭐ BOM 防止 Excel 中文亂碼 */
+    let blob = new Blob(
+        ["\ufeff" + csvContent],
+        { type: "text/csv;charset=utf-8;" }
+    );
+
+    let link =
+    document.createElement("a");
+
+    link.href =
+    URL.createObjectURL(blob);
+
+    link.download =
+    "經濟模擬數據.csv";
+    
+    let today = new Date().toLocaleDateString();
+    link.download = `經濟數據_${today}.csv`;
+
+    link.click();
+}
+
+/* ===== 下載圖表 ===== */
+
+function downloadChart(){
+
+    let a =
+    document.createElement('a');
+
+    a.href =
+    chart.toBase64Image();
+
+    a.download =
+    '經濟關聯圖.png';
+
+    a.click();
+}
+
+/* ===== 重置 ===== */
+
+function resetGame(){
+    location.reload();
+}
+
+/* ===== 啟動 ===== */
+
+window.onload = initChart;
+
+</script>
+
+</body>
+</html>
